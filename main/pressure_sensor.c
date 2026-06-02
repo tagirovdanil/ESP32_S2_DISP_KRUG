@@ -7,7 +7,6 @@
 #include "fontx.h"
 #include "driver/gpio.h"
 #include "esp_spiffs.h"
-#include "control.h"  
 #include <math.h>
 
 static const char *TAG = "SENSOR_MODULE";

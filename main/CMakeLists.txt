@@ -1,4 +1,4 @@
-set(srcs "main.c" "pressure_sensor.c" "st7789.c" "fontx.c")
+set(srcs "main.c" "config.c" "pressure_sensor.c" "gc9a01.c" "fontx.c")
 
 # 1. Сначала ВСЕГДА регистрируем компонент
 idf_component_register(SRCS ${srcs} 

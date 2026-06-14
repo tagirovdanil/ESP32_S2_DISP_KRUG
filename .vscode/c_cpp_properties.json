@@ -1,13 +1,13 @@
 {
-    "configurations": [
-        {
-            "name": "ESP-IDF",
-            "compilerPath": "C:\\Espressif\\tools\\xtensa-esp-elf\\esp-14.2.0_20251107\\xtensa-esp-elf\\bin\\xtensa-esp32-elf-gcc.exe",
-            "cStandard": "c11",
-            "cppStandard": "c++17",
-            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
-            "configurationProvider": "ms-vscode.esp-idf-extension"
-        }
-    ],
-    "version": 4
+  "configurations": [
+    {
+      "name": "ESP-IDF",
+      "compilerPath": "C:\\Espressif\\tools\\xtensa-esp-elf\\esp-15.2.0_20251204\\xtensa-esp-elf\\bin\\xtensa-esp32s2-elf-gcc.exe",
+      "cStandard": "c11",
+      "cppStandard": "c++17",
+      "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+      "configurationProvider": "ms-vscode.esp-idf-extension"
+    }
+  ],
+  "version": 4
 }

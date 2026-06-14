@@ -425,6 +425,7 @@ endif()
 string(TOUPPER ${CONFIG_ARDUINO_VARIANT} idf_target_caps)
 string(REPLACE "-" "_" idf_target_for_macro "${idf_target_caps}")
 target_compile_options(${COMPONENT_TARGET} PUBLIC
+    -Wno-error=missing-field-initializers
     -DARDUINO=10812
     -DARDUINO_${idf_target_for_macro}_DEV
     -DARDUINO_ARCH_ESP32

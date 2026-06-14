@@ -1,4 +1,4 @@
-menu "ST7789 Configuration"
+menu "GC9A01 Configuration"
 
 	config GPIO_RANGE_MAX
 		int

@@ -10,15 +10,14 @@
 #include "driver/uart.h"
 
 // 2. Ваши собственные модули (интерфейсы управления)
-#include "st7789.h"           // Для работы с дисплеем TTGO
+#include "gc9a01.h"           // Для работы с дисплеем GC9A01
 #include "pressure_sensor.h"  // Для работы с датчиком давления и калибровкой
+#include "config.h"           // Глобальные переменные и общие объекты
 
 
 #define USB_UART_PORT       UART_NUM_0
 #define USB_BUF_SIZE        256
 
-
-static const char *TAG = "MAIN_APP";
 
 
 void app_main(void) {

@@ -2,20 +2,19 @@
   "C_Cpp.intelliSenseEngine": "default",
   "idf.extensionActivationMode": "always",
   "idf.openOcdConfigs": [
-    "interface/ftdi/esp32_devkitj_v1.cfg",
-    "target/esp32.cfg"
+    "board/esp32s2-kaluga-1.cfg"
   ],
-  "idf.portWin": "COM4",
+  "idf.portWin": "COM3",
   "idf.currentSetup": "C:\\esp\\v6.0.1\\esp-idf",
   "idf.customExtraVars": {
-    "IDF_TARGET": "esp32"
+    "IDF_TARGET": "esp32s2"
   },
-  "clangd.path": "C:\\Espressif\\tools\\esp-clang\\esp-19.1.2_20250312\\esp-clang\\bin\\clangd.exe",
+  "clangd.path": "C:\\Espressif\\tools\\esp-clang\\esp-20.1.1_20250829\\esp-clang\\bin\\clangd.exe",
   "clangd.arguments": [
     "--background-index",
     "--query-driver=**",
-    "--compile-commands-dir=c:\\Users\\danik\\ESP32_DISO_KRUG\\build"
+    "--compile-commands-dir=c:\\Users\\Danil\\source\\repos\\ESP32_S2_DISP_KRUG\\build"
   ],
   "idf.flashType": "UART",
-  "idf.monitorPort": "COM4"
+  "idf.monitorPort": "COM3"
 }

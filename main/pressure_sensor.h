@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include "driver/uart.h"
 #include "esp_timer.h"
-#include "st7789.h"
+#include "gc9a01.h"
 #include "fontx.h"
 
 /* ========================================================================== */
@@ -18,19 +18,19 @@
 #define SERIAL_UART1_INTERVAL   50
 
 /* ========================================================================== */
-/*   ПИНЫ И ГЕОМЕТРИЯ ДИСПЛЕЯ TTGO                                           */
+/*   ПИНЫ И ГЕОМЕТРИЯ ДИСПЛЕЯ (из sdkconfig / menuconfig)                     */
 /* ========================================================================== */
-#define PIN_MOSI        19
-#define PIN_SCLK        18
-#define PIN_CS          5
-#define PIN_DC          16
-#define PIN_RST         23
-#define PIN_BL          4
+#define PIN_NUM_MOSI    CONFIG_MOSI_GPIO
+#define PIN_NUM_SCLK    CONFIG_SCLK_GPIO
+#define PIN_NUM_CS      CONFIG_CS_GPIO
+#define PIN_NUM_DC      CONFIG_DC_GPIO
+#define PIN_NUM_RST     CONFIG_RESET_GPIO
+#define PIN_NUM_BL      CONFIG_BL_GPIO
 
-#define SCREEN_WIDTH    135
-#define SCREEN_HEIGHT   240
-#define OFFSET_X        52
-#define OFFSET_Y        40
+#define SCREEN_WIDTH    CONFIG_WIDTH
+#define SCREEN_HEIGHT   CONFIG_HEIGHT
+#define OFFSET_X        CONFIG_OFFSETX
+#define OFFSET_Y        CONFIG_OFFSETY
 
 /* ========================================================================== */
 /*   ПРОТОКОЛ ДАТЧИКА ДАВЛЕНИЯ                                                */

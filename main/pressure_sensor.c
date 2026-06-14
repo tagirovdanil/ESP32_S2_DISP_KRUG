@@ -1,8 +1,9 @@
 #include "pressure_sensor.h"
+#include "config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-#include "st7789.h"
+#include "gc9a01.h"
 #include "esp_timer.h"
 #include "fontx.h"
 #include "driver/gpio.h"
@@ -20,13 +21,10 @@ esp_timer_handle_t pressure_timer;
 uint8_t rxBuffer1[12];
 uint8_t rxIndex1 = 0;
 bool frameStarted1 = false;
-uint32_t sum_err = 0;
 uint32_t lastPressureTime = 0;
 
 // Реализация глобальной переменной флага калибровки
 bool is_calibrating = false; 
-
-extern void usb_uart_rx_task(void *pvParameters); 
 
 /* ========================================================================== */
 /*   ПРИВАТНЫЕ (СЛУЖЕБНЫЕ) ФУНКЦИИ — СНАРУЖИ ИХ НЕ ВИДНО                      */
@@ -34,9 +32,6 @@ extern void usb_uart_rx_task(void *pvParameters);
 
 // Фоновая задача или функция циклического чтения данных из буфера UART
 static void processIncomingData(void);
-
-// Если dev и fx16 объявлены в main.c, даем знать файлу pressure_sensor.c о них:
-extern TFT_t dev;
 
 void display_update_task(void *pvParameters) {
     // Создаем буфер для текста прямо внутри задачи, чтобы не тащить его из main
@@ -105,13 +100,13 @@ void LCD_init(void){
     if (esp_vfs_spiffs_register(&spiffs_conf) != ESP_OK) return;
 
     InitFontx(fx16, "/fonts/ILMH16XB.FNT", ""); 
-    spi_master_init(&dev, PIN_MOSI, PIN_SCLK, PIN_CS, PIN_DC, PIN_RST, PIN_BL);
+    spi_master_init(&dev, PIN_NUM_MOSI, PIN_NUM_SCLK, PIN_NUM_CS, PIN_NUM_DC, PIN_NUM_RST, PIN_NUM_BL);
     
     // Передаем SCREEN_WIDTH и SCREEN_HEIGHT (Внимание на Шаг 2 ниже!)
     lcdInit(&dev, SCREEN_WIDTH, SCREEN_HEIGHT, OFFSET_X, OFFSET_Y);
     
-    gpio_set_direction(PIN_BL, GPIO_MODE_OUTPUT);
-    gpio_set_level(PIN_BL, 1);
+    gpio_set_direction(PIN_NUM_BL, GPIO_MODE_OUTPUT);
+    gpio_set_level(PIN_NUM_BL, 1);
 
     gpio_config_t btn_config = { .pin_bit_mask = (1ULL << GPIO_NUM_0), .mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE };
     gpio_config(&btn_config);
@@ -271,9 +266,6 @@ static void processIncomingData(void) {
         }
     }
 }
-
-// Перед самой функцией нужно объявить таску, чтобы xTaskCreate понимал, что это такое
-extern void usb_uart_rx_task(void *pvParameters); 
 
 void pressure_ui_and_usb_init(TFT_t *p_dev) {
     // ==========================================================================

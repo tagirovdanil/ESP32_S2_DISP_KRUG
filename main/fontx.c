@@ -18,40 +18,61 @@ void AddFontx(FontxFile *fx, const char *path)
 	memset(fx, 0, sizeof(FontxFile));
 	fx->path = path;
 	fx->opened = false;
+	fx->embedded_data = NULL;
+	fx->embedded_size = 0;
 }
 
-// Initialize FontxFile structure
-// フォント構造体を初期化
-void InitFontx(FontxFile *fxs, const char *f0, const char *f1)
+// Initialize FontxFile with embedded font data
+void InitFontxEmbedded(FontxFile *fxs, const uint8_t *data, uint32_t size)
 {
-	AddFontx(&fxs[0], f0);
-	AddFontx(&fxs[1], f1);
+	memset(&fxs[0], 0, sizeof(FontxFile));
+	fxs[0].path = "<embedded>";
+	fxs[0].embedded_data = data;
+	fxs[0].embedded_size = size;
+	fxs[0].opened = false;
+	memset(&fxs[1], 0, sizeof(FontxFile));
+	fxs[1].path = "";
+	fxs[1].opened = false;
 }
 
-// Open font file
-// フォントファイルをOPEN
+// Open font file or init embedded font
 bool OpenFontx(FontxFile *fx)
 {
-	FILE *f;
 	if(!fx->opened){
 		if(FontxDebug)printf("[openFont]fx->path=[%s]\n",fx->path);
-		f = fopen(fx->path, "r");
-		if(FontxDebug)printf("[openFont]fopen=%p\n",f);
-		if (f == NULL) {
-			fx->valid = false;
-			printf("Fontx:%s not found.\n",fx->path);
-			return fx->valid ;
-		}
 
-		// Read fontx header
-		fx->file = f;
 		char buf[18];
-		if (fread(buf, 1, sizeof(buf), fx->file) != sizeof(buf)) {
-			printf("Fontx:%s not FONTX format.\n",fx->path);
-			fclose(fx->file);
-			fx->valid = false;
-			fx->file = NULL;
-			return fx->valid ;
+
+		if (fx->embedded_data != NULL) {
+			// --- Embedded font: read header from memory ---
+			if (fx->embedded_size < 18) {
+				printf("Fontx: embedded data too small.\n");
+				fx->valid = false;
+				return fx->valid;
+			}
+			memcpy(buf, fx->embedded_data, 18);
+			fx->file = NULL; // no file handle
+		} else {
+			// --- File-based font ---
+			FILE *f = fopen(fx->path, "r");
+			if(FontxDebug)printf("[openFont]fopen=%p\n",f);
+			if (f == NULL) {
+				fx->valid = false;
+				static const char *last_err_path = NULL;
+				if (last_err_path != fx->path) {
+					printf("Fontx:%s not found.\n", fx->path);
+					last_err_path = fx->path;
+				}
+				return fx->valid;
+			}
+			fx->file = f;
+			if (fread(buf, 1, sizeof(buf), fx->file) != sizeof(buf)) {
+				printf("Fontx:%s not FONTX format.\n", fx->path);
+				fclose(fx->file);
+				fx->valid = false;
+				fx->file = NULL;
+				return fx->valid;
+			}
 		}
 
 		if(FontxDebug) {
@@ -72,10 +93,9 @@ bool OpenFontx(FontxFile *fx)
 		unsigned char *fonts = (unsigned char*)malloc(fx->fsz);
 		if (fonts == NULL) {
 			ESP_LOGE(__FUNCTION__, "Error allocating memory for fonts");
-			fclose(fx->file);
+			if (fx->file) { fclose(fx->file); fx->file = NULL; }
 			fx->valid = false;
-			fx->file = NULL;
-			return fx->valid ;
+			return fx->valid;
 		}
 
 		fx->fonts = fonts;
@@ -90,10 +110,14 @@ bool OpenFontx(FontxFile *fx)
 void CloseFontx(FontxFile *fx)
 {
 	if(fx->opened){
-		fclose(fx->file);
-		fx->file = NULL;
-		free(fx->fonts);
-		fx->fonts = NULL;
+		if (fx->file) {
+			fclose(fx->file);
+			fx->file = NULL;
+		}
+		if (fx->fonts) {
+			free(fx->fonts);
+			fx->fonts = NULL;
+		}
 		fx->opened = false;
 		fx->valid = false;
 	}
@@ -242,14 +266,22 @@ bool GetFontx(FontxFile *fxs, uint8_t ascii, uint8_t *pw, uint8_t *ph)
 			if(FontxDebug)printf("[GetFontx]fxs.is_ank fxs.fsz=%d\n",fxs[i].fsz);
 			offset = 17 + ascii * fxs[i].fsz;
 			if(FontxDebug)printf("[GetFontx]offset=%"PRIu32"\n",offset);
-			if(fseek(fxs[i].file, offset, SEEK_SET)) {
-				printf("Fontx:seek(%"PRIu32") failed.\n",offset);
-				return false;
-			}
-			//if(fread(pGlyph, 1, fxs[i].fsz, fxs[i].file) != fxs[i].fsz) {
-			if(fread(fxs->fonts, 1, fxs[i].fsz, fxs[i].file) != fxs[i].fsz) {
-				printf("Fontx:fread failed.\n");
-				return false;
+			if (fxs[i].embedded_data) {
+				// Embedded font: copy from flash
+				if (offset + fxs[i].fsz > fxs[i].embedded_size) {
+					printf("Fontx: offset out of bounds.\n");
+					return false;
+				}
+				memcpy(fxs->fonts, &fxs[i].embedded_data[offset], fxs[i].fsz);
+			} else {
+				if(fseek(fxs[i].file, offset, SEEK_SET)) {
+					printf("Fontx:seek(%"PRIu32") failed.\n",offset);
+					return false;
+				}
+				if(fread(fxs->fonts, 1, fxs[i].fsz, fxs[i].file) != fxs[i].fsz) {
+					printf("Fontx:fread failed.\n");
+					return false;
+				}
 			}
 			if(pw) *pw = fxs[i].w;
 			if(ph) *ph = fxs[i].h;

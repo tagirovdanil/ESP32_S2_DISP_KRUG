@@ -37,6 +37,7 @@ typedef struct {
 	uint16_t _font_underline_color;
 	int16_t _dc;
 	int16_t _bl;
+	int16_t _cs;
 	spi_device_handle_t _SPIHandle;
 	bool _use_frame_buffer;
 	uint16_t *_frame_buffer;

@@ -39,10 +39,10 @@ void spi_master_init(TFT_t * dev, int16_t GPIO_MOSI, int16_t GPIO_SCLK, int16_t 
 
 	ESP_LOGI(TAG, "GPIO_CS=%d",GPIO_CS);
 	if ( GPIO_CS >= 0 ) {
-		// Hardware CS: just reset pin, SPI driver controls it
+		// MANUAL CS: configure as GPIO, set HIGH (inactive)
 		gpio_reset_pin( GPIO_CS );
 		gpio_set_direction( GPIO_CS, GPIO_MODE_OUTPUT );
-		// Do NOT set CS level — SPI driver handles CS via spics_io_num
+		gpio_set_level( GPIO_CS, 1 );
 	}
 
 	ESP_LOGI(TAG, "GPIO_DC=%d",GPIO_DC);
@@ -89,14 +89,9 @@ void spi_master_init(TFT_t * dev, int16_t GPIO_MOSI, int16_t GPIO_SCLK, int16_t 
 	memset(&devcfg, 0, sizeof(devcfg));
 	devcfg.clock_speed_hz = clock_speed_hz;
 	devcfg.queue_size = 7;
-	devcfg.mode = 3;
+	devcfg.mode = 3;				// SPI mode 3
 	devcfg.flags = SPI_DEVICE_NO_DUMMY;
-
-	if ( GPIO_CS >= 0 ) {
-		devcfg.spics_io_num = GPIO_CS;
-	} else {
-		devcfg.spics_io_num = -1;
-	}
+	devcfg.spics_io_num = -1;		// Manual CS — we control it ourselves
 	
 	spi_device_handle_t handle;
 	ret = spi_bus_add_device( HOST_ID, &devcfg, &handle);
@@ -104,6 +99,7 @@ void spi_master_init(TFT_t * dev, int16_t GPIO_MOSI, int16_t GPIO_SCLK, int16_t 
 	assert(ret==ESP_OK);
 	dev->_dc = GPIO_DC;
 	dev->_bl = GPIO_BL;
+	dev->_cs = GPIO_CS;
 	dev->_SPIHandle = handle;
 }
 
@@ -123,20 +119,34 @@ bool spi_master_write_byte(spi_device_handle_t SPIHandle, const uint8_t* Data, s
 	return true;
 }
 
+// Manual CS helpers — we control CS ourselves, not the SPI driver
+static inline void cs_low(TFT_t *dev) {
+	if (dev->_cs >= 0) gpio_set_level(dev->_cs, 0);
+}
+static inline void cs_high(TFT_t *dev) {
+	if (dev->_cs >= 0) gpio_set_level(dev->_cs, 1);
+}
+
 bool spi_master_write_command(TFT_t * dev, uint8_t cmd)
 {
 	static uint8_t Byte = 0;
 	Byte = cmd;
+	cs_low(dev);
 	gpio_set_level( dev->_dc, SPI_Command_Mode );
-	return spi_master_write_byte( dev->_SPIHandle, &Byte, 1 );
+	bool ret = spi_master_write_byte( dev->_SPIHandle, &Byte, 1 );
+	cs_high(dev);
+	return ret;
 }
 
 bool spi_master_write_data_byte(TFT_t * dev, uint8_t data)
 {
 	static uint8_t Byte = 0;
 	Byte = data;
+	cs_low(dev);
 	gpio_set_level( dev->_dc, SPI_Data_Mode );
-	return spi_master_write_byte( dev->_SPIHandle, &Byte, 1 );
+	bool ret = spi_master_write_byte( dev->_SPIHandle, &Byte, 1 );
+	cs_high(dev);
+	return ret;
 }
 
 
@@ -145,8 +155,11 @@ bool spi_master_write_data_word(TFT_t * dev, uint16_t data)
 	static uint8_t Byte[2];
 	Byte[0] = (data >> 8) & 0xFF;
 	Byte[1] = data & 0xFF;
+	cs_low(dev);
 	gpio_set_level( dev->_dc, SPI_Data_Mode );
-	return spi_master_write_byte( dev->_SPIHandle, Byte, 2);
+	bool ret = spi_master_write_byte( dev->_SPIHandle, Byte, 2);
+	cs_high(dev);
+	return ret;
 }
 
 bool spi_master_write_addr(TFT_t * dev, uint16_t addr1, uint16_t addr2)
@@ -156,32 +169,54 @@ bool spi_master_write_addr(TFT_t * dev, uint16_t addr1, uint16_t addr2)
 	Byte[1] = addr1 & 0xFF;
 	Byte[2] = (addr2 >> 8) & 0xFF;
 	Byte[3] = addr2 & 0xFF;
+	cs_low(dev);
 	gpio_set_level( dev->_dc, SPI_Data_Mode );
-	return spi_master_write_byte( dev->_SPIHandle, Byte, 4);
+	bool ret = spi_master_write_byte( dev->_SPIHandle, Byte, 4);
+	cs_high(dev);
+	return ret;
 }
 
 bool spi_master_write_color(TFT_t * dev, uint16_t color, uint16_t size)
 {
 	static uint8_t Byte[1024];
-	int index = 0;
-	for(int i=0;i<size;i++) {
-		Byte[index++] = (color >> 8) & 0xFF;
-		Byte[index++] = color & 0xFF;
-	}
+	int chunk_size = sizeof(Byte) / 2; // 512 pixels per chunk
+	cs_low(dev);
 	gpio_set_level( dev->_dc, SPI_Data_Mode );
-	return spi_master_write_byte( dev->_SPIHandle, Byte, size*2);
+
+	while (size > 0) {
+		int n = (size > chunk_size) ? chunk_size : size;
+		int index = 0;
+		for (int i = 0; i < n; i++) {
+			Byte[index++] = (color >> 8) & 0xFF;
+			Byte[index++] = color & 0xFF;
+		}
+		spi_master_write_byte( dev->_SPIHandle, Byte, n * 2);
+		size -= n;
+	}
+	cs_high(dev);
+	return true;
 }
 
 bool spi_master_write_colors(TFT_t * dev, uint16_t * colors, uint16_t size)
 {
 	static uint8_t Byte[1024];
-	int index = 0;
-	for(int i=0;i<size;i++) {
-		Byte[index++] = (colors[i] >> 8) & 0xFF;
-		Byte[index++] = colors[i] & 0xFF;
-	}
+	int chunk_size = sizeof(Byte) / 2; // 512 pixels per chunk
+	cs_low(dev);
 	gpio_set_level( dev->_dc, SPI_Data_Mode );
-	return spi_master_write_byte( dev->_SPIHandle, Byte, size*2);
+
+	while (size > 0) {
+		int n = (size > chunk_size) ? chunk_size : size;
+		int index = 0;
+		for (int i = 0; i < n; i++) {
+			Byte[index++] = (colors[i] >> 8) & 0xFF;
+			Byte[index++] = colors[i] & 0xFF;
+		}
+		spi_master_write_byte( dev->_SPIHandle, Byte, n * 2);
+		colors += n;
+		size -= n;
+	}
+	cs_high(dev);
+	return true;
 }
 
 void delayMS(int ms) {
@@ -205,208 +240,54 @@ void lcdInit(TFT_t * dev, int width, int height, int offsetx, int offsety)
 	dev->_font_fill = false;
 	dev->_font_underline = false;
 
-	// --- GC9A01 Initialization Sequence ---
+	ESP_LOGI(TAG, "=== MINIMAL INIT (no complex regs) ===");
 
-	// Inter register enable 1
-	spi_master_write_command(dev, 0xFE);
-	spi_master_write_command(dev, 0xEF);
-	
-	// Inter register enable 2
-	spi_master_write_command(dev, 0xEB);
-	spi_master_write_data_byte(dev, 0x14);
+	// Software Reset
+	spi_master_write_command(dev, 0x01);
+	delayMS(150);
 
-	// Power control
-	spi_master_write_command(dev, 0x84);
-	spi_master_write_data_byte(dev, 0x40);
-	spi_master_write_command(dev, 0x85);
-	spi_master_write_data_byte(dev, 0xFF);
-	spi_master_write_command(dev, 0x86);
-	spi_master_write_data_byte(dev, 0xFF);
-	spi_master_write_command(dev, 0x87);
-	spi_master_write_data_byte(dev, 0xFF);
-	spi_master_write_command(dev, 0x88);
-	spi_master_write_data_byte(dev, 0x0A);
-	spi_master_write_command(dev, 0x89);
-	spi_master_write_data_byte(dev, 0x21);
-	spi_master_write_command(dev, 0x8A);
-	spi_master_write_data_byte(dev, 0x00);
-	spi_master_write_command(dev, 0x8B);
-	spi_master_write_data_byte(dev, 0x80);
-	spi_master_write_command(dev, 0x8C);
-	spi_master_write_data_byte(dev, 0x01);
-	spi_master_write_command(dev, 0x8D);
-	spi_master_write_data_byte(dev, 0x01);
-	spi_master_write_command(dev, 0x8E);
-	spi_master_write_data_byte(dev, 0xFF);
-	spi_master_write_command(dev, 0x8F);
-	spi_master_write_data_byte(dev, 0xFF);
+	// Sleep Out
+	spi_master_write_command(dev, 0x11);
+	delayMS(120);
 
-	// Display Function Control
-	spi_master_write_command(dev, 0xB6);
-	spi_master_write_data_byte(dev, 0x00);
-	spi_master_write_data_byte(dev, 0x20);
-
-	// MADCTL: Memory Data Access Control
-	// Try different MADCTL if colors/rotation wrong: 0x00(RGB), 0x08(BGR), 0x48(mirror BGR), 0x88(rotate BGR)
+	// MADCTL
 	spi_master_write_command(dev, 0x36);
 	spi_master_write_data_byte(dev, 0x00);
 
-	// COLMOD: Interface Pixel Format — 16-bit/pixel (65K colors)
+	// COLMOD: 16-bit
 	spi_master_write_command(dev, 0x3A);
 	spi_master_write_data_byte(dev, 0x05);
 
-	// CASET: Column Address Set (0..239)
+	// CASET (0..239)
 	spi_master_write_command(dev, 0x2A);
 	spi_master_write_data_byte(dev, 0x00);
 	spi_master_write_data_byte(dev, 0x00);
 	spi_master_write_data_byte(dev, 0x00);
 	spi_master_write_data_byte(dev, 0xEF);
 
-	// RASET: Row Address Set (0..239)
+	// RASET (0..239)
 	spi_master_write_command(dev, 0x2B);
 	spi_master_write_data_byte(dev, 0x00);
 	spi_master_write_data_byte(dev, 0x00);
 	spi_master_write_data_byte(dev, 0x00);
 	spi_master_write_data_byte(dev, 0xEF);
 
-	// VCOM setting
-	spi_master_write_command(dev, 0x90);
-	spi_master_write_data_byte(dev, 0x08);
-	spi_master_write_data_byte(dev, 0x08);
-	spi_master_write_data_byte(dev, 0x08);
-	spi_master_write_data_byte(dev, 0x08);
-
-	spi_master_write_command(dev, 0xBD);
-	spi_master_write_data_byte(dev, 0x06);
-	spi_master_write_command(dev, 0xBC);
-	spi_master_write_data_byte(dev, 0x00);
-
-	spi_master_write_command(dev, 0xFF);
-	spi_master_write_data_byte(dev, 0x60);
-	spi_master_write_data_byte(dev, 0x01);
-	spi_master_write_data_byte(dev, 0x04);
-
-	// Power Control 2
-	spi_master_write_command(dev, 0xC3);
-	spi_master_write_data_byte(dev, 0x13);
-	spi_master_write_command(dev, 0xC4);
-	spi_master_write_data_byte(dev, 0x13);
-
-	spi_master_write_command(dev, 0xC9);
-	spi_master_write_data_byte(dev, 0x22);
-
-	spi_master_write_command(dev, 0xBE);
-	spi_master_write_data_byte(dev, 0x11);
-
-	spi_master_write_command(dev, 0xE1);
-	spi_master_write_data_byte(dev, 0x10);
-	spi_master_write_data_byte(dev, 0x0E);
-
-	spi_master_write_command(dev, 0xDF);
-	spi_master_write_data_byte(dev, 0x21);
-	spi_master_write_data_byte(dev, 0x0C);
-	spi_master_write_data_byte(dev, 0x02);
-
-	// Gamma Set
-	{
-		uint8_t gamma[6];
-		spi_master_write_command(dev, 0xF0);
-		gamma[0]=0x45; gamma[1]=0x09; gamma[2]=0x08; gamma[3]=0x08; gamma[4]=0x26; gamma[5]=0x2A;
-		for(int i=0;i<6;i++) spi_master_write_data_byte(dev, gamma[i]);
-
-		spi_master_write_command(dev, 0xF1);
-		gamma[0]=0x43; gamma[1]=0x70; gamma[2]=0x72; gamma[3]=0x36; gamma[4]=0x37; gamma[5]=0x6F;
-		for(int i=0;i<6;i++) spi_master_write_data_byte(dev, gamma[i]);
-
-		spi_master_write_command(dev, 0xF2);
-		gamma[0]=0x45; gamma[1]=0x09; gamma[2]=0x08; gamma[3]=0x08; gamma[4]=0x26; gamma[5]=0x2A;
-		for(int i=0;i<6;i++) spi_master_write_data_byte(dev, gamma[i]);
-
-		spi_master_write_command(dev, 0xF3);
-		gamma[0]=0x43; gamma[1]=0x70; gamma[2]=0x72; gamma[3]=0x36; gamma[4]=0x37; gamma[5]=0x6F;
-		for(int i=0;i<6;i++) spi_master_write_data_byte(dev, gamma[i]);
-	}
-
-	spi_master_write_command(dev, 0xED);
-	spi_master_write_data_byte(dev, 0x1B);
-	spi_master_write_data_byte(dev, 0x0B);
-
-	spi_master_write_command(dev, 0xAE);
-	spi_master_write_data_byte(dev, 0x77);
-
-	spi_master_write_command(dev, 0xCD);
-	spi_master_write_data_byte(dev, 0x63);
-
-	// Frame Rate Control
-	{
-		uint8_t frate[] = {0x07, 0x07, 0x04, 0x0E, 0x0F, 0x09, 0x07, 0x08, 0x03};
-		spi_master_write_command(dev, 0x70);
-		for(int i=0;i<9;i++) spi_master_write_data_byte(dev, frate[i]);
-	}
-
-	spi_master_write_command(dev, 0xE8);
-	spi_master_write_data_byte(dev, 0x34);
-
-	// AVDD / AVCL / VGH / VGL Settings
-	{
-		uint8_t pwr[12];
-		spi_master_write_command(dev, 0x62);
-		pwr[0]=0x18; pwr[1]=0x0D; pwr[2]=0x71; pwr[3]=0xED; pwr[4]=0x70; pwr[5]=0x70;
-		pwr[6]=0x18; pwr[7]=0x0F; pwr[8]=0x71; pwr[9]=0xEF; pwr[10]=0x70; pwr[11]=0x70;
-		for(int i=0;i<12;i++) spi_master_write_data_byte(dev, pwr[i]);
-
-		spi_master_write_command(dev, 0x63);
-		pwr[0]=0x18; pwr[1]=0x11; pwr[2]=0x71; pwr[3]=0xF1; pwr[4]=0x70; pwr[5]=0x70;
-		pwr[6]=0x18; pwr[7]=0x13; pwr[8]=0x71; pwr[9]=0xF3; pwr[10]=0x70; pwr[11]=0x70;
-		for(int i=0;i<12;i++) spi_master_write_data_byte(dev, pwr[i]);
-
-		spi_master_write_command(dev, 0x64);
-		uint8_t pwr3[] = {0x28, 0x29, 0xF1, 0x01, 0xF1, 0x00, 0x07};
-		for(int i=0;i<7;i++) spi_master_write_data_byte(dev, pwr3[i]);
-
-		spi_master_write_command(dev, 0x66);
-		uint8_t pwr4[] = {0x3C, 0x00, 0xCD, 0x67, 0x45, 0x45, 0x10, 0x00, 0x00, 0x00};
-		for(int i=0;i<10;i++) spi_master_write_data_byte(dev, pwr4[i]);
-
-		spi_master_write_command(dev, 0x67);
-		uint8_t pwr5[] = {0x00, 0x3C, 0x00, 0x00, 0x00, 0x01, 0x54, 0x10, 0x32, 0x98};
-		for(int i=0;i<10;i++) spi_master_write_data_byte(dev, pwr5[i]);
-
-		spi_master_write_command(dev, 0x74);
-		uint8_t pwr6[] = {0x10, 0x85, 0x80, 0x00, 0x00, 0x4E, 0x00};
-		for(int i=0;i<7;i++) spi_master_write_data_byte(dev, pwr6[i]);
-	}
-
-	spi_master_write_command(dev, 0x98);
-	spi_master_write_data_byte(dev, 0x3E);
-	spi_master_write_data_byte(dev, 0x07);
-
-	// Tearing Effect Line ON
-	spi_master_write_command(dev, 0x35);
-	spi_master_write_data_byte(dev, 0x00);
-
-	// Display Inversion On (many GC9A01 modules need this)
-	spi_master_write_command(dev, 0x21);
+	// Inversion OFF (try without first)
+	spi_master_write_command(dev, 0x20);
 	delayMS(10);
 
 	// Normal Display Mode
 	spi_master_write_command(dev, 0x13);
 	delayMS(10);
 
-	// Sleep Out
-	spi_master_write_command(dev, 0x11);
-	delayMS(150);
-
 	// Display ON
 	spi_master_write_command(dev, 0x29);
-	delayMS(50);
+	delayMS(100);
 
-	// Backlight ON (if BL pin is set)
+	ESP_LOGI(TAG, "=== MINIMAL INIT DONE ===");
+
 	if(dev->_bl >= 0) {
 		gpio_set_level( dev->_bl, 1 );
-	} else {
-		// Even if no BL GPIO, the module backlight may be hardwired to VCC
-		ESP_LOGI(TAG, "No BL pin configured — backlight should be hardwired to VCC");
 	}
 
 	dev->_use_frame_buffer = false;

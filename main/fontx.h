@@ -13,10 +13,13 @@ typedef struct {
 	uint8_t bc;
 	FILE *file;
 	unsigned char *fonts;
+	const uint8_t *embedded_data;  // for embedded fonts (no file needed)
+	uint32_t embedded_size;
 } FontxFile;
 
 void AaddFontx(FontxFile *fx, const char *path);
 void InitFontx(FontxFile *fxs, const char *f0, const char *f1);
+void InitFontxEmbedded(FontxFile *fxs, const uint8_t *data, uint32_t size);
 bool OpenFontx(FontxFile *fx);
 void CloseFontx(FontxFile *fx);
 void DumpFontx(FontxFile *fxs);

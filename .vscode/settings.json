@@ -4,7 +4,7 @@
   "idf.openOcdConfigs": [
     "board/esp32s2-kaluga-1.cfg"
   ],
-  "idf.portWin": "COM3",
+  "idf.portWin": "COM5",
   "idf.currentSetup": "C:\\esp\\v6.0.1\\esp-idf",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32s2"
@@ -16,5 +16,5 @@
     "--compile-commands-dir=c:\\Users\\Danil\\source\\repos\\ESP32_S2_DISP_KRUG\\build"
   ],
   "idf.flashType": "UART",
-  "idf.monitorPort": "COM3"
+  "idf.monitorPort": "COM5"
 }

@@ -1,9 +1,8 @@
-set(srcs "main.c" "config.c" "pressure_sensor.c" "gc9a01.c" "fontx.c")
+set(srcs "main.c")
 
-# 1. Сначала ВСЕГДА регистрируем компонент
+# Регистрируем компонент
 idf_component_register(SRCS ${srcs} 
                        INCLUDE_DIRS "."
-                       PRIV_REQUIRES esp_driver_gpio esp_driver_uart esp_driver_spi esp_timer spiffs)
+                       PRIV_REQUIRES esp_driver_gpio)
 
-# 2. Только ПОСЛЕ регистрации отключаем ошибку missing-field-initializers
 component_compile_options("-Wno-error=missing-field-initializers")

@@ -6,8 +6,8 @@
 #include "gc9a01.h"
 #include "esp_timer.h"
 #include "fontx.h"
+#include "font_embedded.h"
 #include "driver/gpio.h"
-#include "esp_spiffs.h"
 #include <math.h>
 
 static const char *TAG = "SENSOR_MODULE";
@@ -94,27 +94,42 @@ void clearBufferCompletely(uart_port_t uart_num) {
         }
     
 void LCD_init(void){
-    esp_vfs_spiffs_conf_t spiffs_conf = {
-        .base_path = "/fonts", .partition_label = "storage1", .max_files = 1, .format_if_mount_failed = false 
-    };
-    if (esp_vfs_spiffs_register(&spiffs_conf) != ESP_OK) return;
-
-    InitFontx(fx16, "/fonts/ILMH16XB.FNT", ""); 
+    ESP_LOGI(TAG, "=== LCD_init START ===");
+    
+    ESP_LOGI(TAG, "Loading embedded font...");
+    InitFontxEmbedded(fx16, font_ILMH16XB_data, FONT_ILMH16XB_SIZE);
+    ESP_LOGI(TAG, "Embedded font loaded: %d bytes", FONT_ILMH16XB_SIZE);
+    
+    ESP_LOGI(TAG, "SPI init: MOSI=%d SCLK=%d CS=%d DC=%d RST=%d BL=%d",
+        PIN_NUM_MOSI, PIN_NUM_SCLK, PIN_NUM_CS, PIN_NUM_DC, PIN_NUM_RST, PIN_NUM_BL);
     spi_master_init(&dev, PIN_NUM_MOSI, PIN_NUM_SCLK, PIN_NUM_CS, PIN_NUM_DC, PIN_NUM_RST, PIN_NUM_BL);
     
-    // Передаем SCREEN_WIDTH и SCREEN_HEIGHT (Внимание на Шаг 2 ниже!)
+    ESP_LOGI(TAG, "GC9A01 lcdInit: W=%d H=%d offX=%d offY=%d", SCREEN_WIDTH, SCREEN_HEIGHT, OFFSET_X, OFFSET_Y);
     lcdInit(&dev, SCREEN_WIDTH, SCREEN_HEIGHT, OFFSET_X, OFFSET_Y);
     
-    gpio_set_direction(PIN_NUM_BL, GPIO_MODE_OUTPUT);
-    gpio_set_level(PIN_NUM_BL, 1);
+    ESP_LOGI(TAG, "Display init done, backlight...");
+    if (PIN_NUM_BL >= 0) {
+        gpio_set_direction(PIN_NUM_BL, GPIO_MODE_OUTPUT);
+        gpio_set_level(PIN_NUM_BL, 1);
+    } else {
+        ESP_LOGI(TAG, "No BL pin — backlight should be hardwired to VCC");
+    }
 
     gpio_config_t btn_config = { .pin_bit_mask = (1ULL << GPIO_NUM_0), .mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE };
     gpio_config(&btn_config);
 
+    ESP_LOGI(TAG, "Fill screen RED test...");
+    lcdFillScreen(&dev, RED);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    ESP_LOGI(TAG, "Fill screen WHITE test...");
+    lcdFillScreen(&dev, WHITE);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    ESP_LOGI(TAG, "Fill screen BLACK...");
     lcdFillScreen(&dev, BLACK); 
     
     // СТРОГО DIRECTION0 (Текст пишется как обычно, слева направо)
-    lcdSetFontDirection(&dev, DIRECTION270); 
+    lcdSetFontDirection(&dev, DIRECTION270);
+    ESP_LOGI(TAG, "=== LCD_init DONE ===");
 }
 
 // ==========================================================================
